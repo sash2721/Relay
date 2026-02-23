@@ -16,6 +16,10 @@ import (
 
 func main() {
 	fmt.Println("Relay starts!")
+
+	// Getting the Auth Providers
+	configs.InitProviders()
+
 	r := chi.NewRouter()
 
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
