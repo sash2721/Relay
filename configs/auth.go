@@ -1,8 +1,6 @@
 package configs
 
 import (
-	"os"
-
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/github"
 	"golang.org/x/oauth2/google"
@@ -13,15 +11,13 @@ var (
 	GithubOAuthConfig *oauth2.Config
 )
 
-// InitProviders sets up OAuth2 configs for Google and GitHub.
-// Call this once at startup after loading your env vars.
 func InitProviders() {
-	appURL := os.Getenv("APP_URL")
+	sc := GetServerConfig()
 
 	GoogleOAuthConfig = &oauth2.Config{
-		ClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
-		ClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
-		RedirectURL:  appURL + "/auth/google/callback",
+		ClientID:     sc.GoogleClientID,
+		ClientSecret: sc.GoogleClientSecret,
+		RedirectURL:  sc.AppURL + sc.GoogleCallbackAPI,
 		Scopes: []string{
 			"https://www.googleapis.com/auth/userinfo.email",
 			"https://www.googleapis.com/auth/userinfo.profile",
@@ -31,9 +27,9 @@ func InitProviders() {
 	}
 
 	GithubOAuthConfig = &oauth2.Config{
-		ClientID:     os.Getenv("GITHUB_CLIENT_ID"),
-		ClientSecret: os.Getenv("GITHUB_CLIENT_SECRET"),
-		RedirectURL:  appURL + "auth/github/callback",
+		ClientID:     sc.GithubClientID,
+		ClientSecret: sc.GithubClientSecret,
+		RedirectURL:  sc.AppURL + sc.GithubCallbackAPI,
 		Scopes:       []string{"user:email", "read:user"},
 		Endpoint:     github.Endpoint,
 	}

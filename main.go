@@ -12,27 +12,45 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/sash2721/Relay/configs"
+	"github.com/sash2721/Relay/handlers"
+	"github.com/sash2721/Relay/middlewares"
 )
 
 func main() {
 	fmt.Println("Relay starts!")
 
-	// Getting the Auth Providers
+	configs.InitServerConfig()
 	configs.InitProviders()
 
 	r := chi.NewRouter()
 
-	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{ "message": "Relay Service Started" }`))
+	// common middlewares for all routes here
+	r.Use(middlewares.LoggingMiddleware)
+
+	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{ "message": "Relay Backend Service Running" }`))
 	})
 
-	// getting the configs
 	serverConfig := configs.GetServerConfig()
 
-	// initialising the server
+	// public routes
+	r.Post(serverConfig.LoginAPI, handlers.HandleLogin)
+	r.Post(serverConfig.SignupAPI, handlers.HandleSignup)
+	r.Get(serverConfig.GoogleLoginAPI, handlers.HandleGoogleLogin)
+	r.Get(serverConfig.GoogleCallbackAPI, handlers.HandleGoogleCallback)
+	r.Get(serverConfig.GithubLoginAPI, handlers.HandleGithubLogin)
+	r.Get(serverConfig.GithubCallbackAPI, handlers.HandleGithubCallback)
+	r.Get(serverConfig.LogoutAPI, handlers.HandleLogout)
+
+	// protected routes
+	r.Group(func(r chi.Router) {
+		r.Use(middlewares.AuthZMiddleware)
+		r.Use(middlewares.AuthNMiddleware)
+		// TODO: add protected routes here
+	})
+
 	var server *http.Server
 
-	// creating a dev environment server
 	if serverConfig.Env == "development" {
 		server = &http.Server{
 			Addr:         serverConfig.Port,
@@ -43,38 +61,30 @@ func main() {
 		}
 	}
 
-	// creating a channel to listen for OS signals
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop() // cancel the context at the end
+	defer stop()
 
-	// starting the server in a goroutine (asynchronous)
 	go func() {
 		fmt.Printf("Relay Backend Server listening on PORT%s\n", server.Addr)
 		err := server.ListenAndServe()
 
 		if err != nil && err != http.ErrServerClosed {
-			slog.Error(
-				"Error while starting the Server:",
+			slog.Error("Error while starting the Server:",
 				slog.Any("Error:", err),
 			)
 		}
 	}()
 
-	// Block here and wait for the OS Background signals
 	<-ctx.Done()
 
-	// if any signal comes then log the message for shutting down the server
 	slog.Info("Shutdown Signal received, shutting down the backend server gracefully!")
 
-	// creating a context with 5 seconds timeout for shutdown
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// shutdown using the shutdown context (Attempting graceful shutdown)
 	err := server.Shutdown(shutdownCtx)
 	if err != nil {
-		slog.Error(
-			"Server forced to shutdown:",
+		slog.Error("Server forced to shutdown:",
 			slog.Any("Error", err),
 		)
 	}
