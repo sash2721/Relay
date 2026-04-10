@@ -12,12 +12,13 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/sash2721/Relay/configs"
+	"github.com/sash2721/Relay/db"
 	"github.com/sash2721/Relay/handlers"
 	"github.com/sash2721/Relay/middlewares"
 )
 
 func main() {
-	fmt.Println("Relay starts!")
+	slog.Info("Relay Starts!🚀")
 
 	configs.InitServerConfig()
 	configs.InitProviders()
@@ -32,6 +33,23 @@ func main() {
 	})
 
 	serverConfig := configs.GetServerConfig()
+
+	// creating db connection and running the migrations
+	err := db.Connect(serverConfig.DbConnectionString)
+	if err != nil {
+		slog.Error("DB connection not established!", slog.Any("Error", err))
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	err = db.RunMigrations()
+	if err != nil {
+		slog.Error(
+			"Failed to run the migrations",
+			slog.Any("Error:", err),
+		)
+		os.Exit(1)
+	}
 
 	// public routes
 	r.Post(serverConfig.LoginAPI, handlers.HandleLogin)
@@ -82,7 +100,7 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	err := server.Shutdown(shutdownCtx)
+	err = server.Shutdown(shutdownCtx)
 	if err != nil {
 		slog.Error("Server forced to shutdown:",
 			slog.Any("Error", err),
