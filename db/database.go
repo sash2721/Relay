@@ -35,6 +35,7 @@ func Connect(connectionString string) error {
 func RunMigrations() error {
 	files := []string{
 		"migrations/001_init_schema.sql",
+		"migrations/002_admins_table.sql",
 	}
 
 	for _, file := range files {

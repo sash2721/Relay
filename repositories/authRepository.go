@@ -18,9 +18,9 @@ func NewAuthRepository(db *pgxpool.Pool) *AuthRepository {
 }
 
 func (repo *AuthRepository) StoreLocalUser(user models.Users) error {
-	query := `INSERT INTO users (id, email, country, name, role, password_hash, provider, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+	query := `INSERT INTO users (email, country, name, role, password_hash, provider) VALUES ($1, $2, $3, $4, $5, $6)`
 
-	_, err := repo.DB.Exec(context.Background(), query, user.Id, user.Email, user.Country, user.Name, user.Role, user.PasswordHash, user.Provider, user.CreatedAt)
+	_, err := repo.DB.Exec(context.Background(), query, user.Email, user.Country, user.Name, user.Role, user.PasswordHash, user.Provider)
 
 	if err != nil {
 		return fmt.Errorf("Failed to store the user data in the DB: %w", err)
@@ -29,20 +29,22 @@ func (repo *AuthRepository) StoreLocalUser(user models.Users) error {
 	return nil
 }
 
-func (repo *AuthRepository) StoreOauthUser(user models.Users) error {
-	query := `INSERT INTO users (id, email, country, name, role, password_hash, provider, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+func (repo *AuthRepository) UpsertOauthUser(user models.Users) error {
+	query := `INSERT INTO users (email, name, role, provider)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, provider = EXCLUDED.provider`
 
-	_, err := repo.DB.Exec(context.Background(), query, user.Id, user.Email, user.Country, user.Name, user.Role, nil, user.Provider, user.CreatedAt)
+	_, err := repo.DB.Exec(context.Background(), query, user.Email, user.Name, user.Role, user.Provider)
 
 	if err != nil {
-		return fmt.Errorf("Failed to store the user data in the DB: %w", err)
+		return fmt.Errorf("Failed to upsert the OAuth user in the DB: %w", err)
 	}
 
 	return nil
 }
 
 func (repo *AuthRepository) GetUser(email string) (*models.Users, error) {
-	query := `SELECT * FROM users WHERE email = $1`
+	query := `SELECT id, email, country, name, role, password_hash, provider, created_at::text FROM users WHERE email = $1`
 
 	row := repo.DB.QueryRow(context.Background(), query, email)
 
@@ -63,4 +65,20 @@ func (repo *AuthRepository) GetUser(email string) (*models.Users, error) {
 	}
 
 	return &user, nil
+}
+
+func (repo *AuthRepository) CheckUserAdmin(email string) (bool, error) {
+	query := `SELECT EXISTS(SELECT 1 FROM admins WHERE email = $1)`
+
+	var exists bool
+	err := repo.DB.QueryRow(context.Background(), query, email).Scan(&exists)
+
+	if err != nil {
+		slog.Error(
+			"Error while fetching the admin status for the given mail",
+			slog.Any("Error", err),
+		)
+		return false, err
+	}
+	return exists, nil
 }

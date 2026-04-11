@@ -15,6 +15,8 @@ import (
 	"github.com/sash2721/Relay/db"
 	"github.com/sash2721/Relay/handlers"
 	"github.com/sash2721/Relay/middlewares"
+	"github.com/sash2721/Relay/repositories"
+	"github.com/sash2721/Relay/services"
 )
 
 func main() {
@@ -51,13 +53,22 @@ func main() {
 		os.Exit(1)
 	}
 
+	// creating repositories
+	authRepository := repositories.NewAuthRepository(db.Pool)
+
+	// creating services
+	authService := services.NewAuthService(authRepository)
+
+	// creating handlers and injecting services into them
+	authHandler := handlers.AuthHandler{Service: authService}
+
 	// public routes
-	r.Post(serverConfig.LoginAPI, handlers.HandleLogin)
-	r.Post(serverConfig.SignupAPI, handlers.HandleSignup)
-	r.Get(serverConfig.GoogleLoginAPI, handlers.HandleGoogleLogin)
-	r.Get(serverConfig.GoogleCallbackAPI, handlers.HandleGoogleCallback)
-	r.Get(serverConfig.GithubLoginAPI, handlers.HandleGithubLogin)
-	r.Get(serverConfig.GithubCallbackAPI, handlers.HandleGithubCallback)
+	r.Post(serverConfig.LoginAPI, authHandler.HandleLogin)
+	r.Post(serverConfig.SignupAPI, authHandler.HandleSignup)
+	r.Get(serverConfig.GoogleLoginAPI, authHandler.HandleGoogleLogin)
+	r.Get(serverConfig.GoogleCallbackAPI, authHandler.HandleGoogleCallback)
+	r.Get(serverConfig.GithubLoginAPI, authHandler.HandleGithubLogin)
+	r.Get(serverConfig.GithubCallbackAPI, authHandler.HandleGithubCallback)
 	r.Get(serverConfig.LogoutAPI, handlers.HandleLogout)
 
 	// protected routes
