@@ -55,12 +55,15 @@ func main() {
 
 	// creating repositories
 	authRepository := repositories.NewAuthRepository(db.Pool)
+	projectRepository := repositories.NewProjectRepository(db.Pool)
 
 	// creating services
 	authService := services.NewAuthService(authRepository)
+	projectService := services.NewProjectService(projectRepository)
 
 	// creating handlers and injecting services into them
 	authHandler := handlers.AuthHandler{Service: authService}
+	projectHandler := handlers.ProjectHandler{Service: projectService}
 
 	// public routes
 	r.Post(serverConfig.LoginAPI, authHandler.HandleLogin)
@@ -75,7 +78,12 @@ func main() {
 	r.Group(func(r chi.Router) {
 		r.Use(middlewares.AuthZMiddleware)
 		r.Use(middlewares.AuthNMiddleware)
-		// TODO: add protected routes here
+
+		// add protected routes here
+		r.Post(serverConfig.ProjectAPI, projectHandler.HandleCreateProject)
+		r.Get(serverConfig.ProjectAPI, projectHandler.HandleListProjects)
+		r.Get(serverConfig.UpdateProjectAPI, projectHandler.HandleGetProject)
+		r.Delete(serverConfig.UpdateProjectAPI, projectHandler.HandleDeleteProject)
 	})
 
 	var server *http.Server
