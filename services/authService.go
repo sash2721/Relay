@@ -5,25 +5,58 @@ import (
 	"net/http"
 
 	"github.com/sash2721/Relay/errors"
+	"github.com/sash2721/Relay/models"
+	"github.com/sash2721/Relay/repositories"
 	"github.com/sash2721/Relay/utils"
 )
 
-type AuthService struct{}
+type AuthService struct {
+	Repo *repositories.AuthRepository
+}
 
-func NewAuthService() *AuthService {
-	return &AuthService{}
+func NewAuthService(repo *repositories.AuthRepository) *AuthService {
+	return &AuthService{Repo: repo}
 }
 
 func (s *AuthService) Login(email string, password string) (string, string, string, string, string, error, []byte, int) {
 	slog.Debug("Login called", slog.String("Email", email))
 
-	// TODO: fetch user from repository by email
-	// TODO: compare password using utils.ComparePassword(hashedPassword, password)
+	// fetch user from repository by email
+	user, err := s.Repo.GetUser(email)
 
-	// TODO: get actual userID, userName, role from repository
-	var userID string
-	var userName string
-	var role string
+	if err != nil {
+		slog.Error(
+			"Error while fetching the user from DB",
+			slog.Any("Error:", err),
+		)
+		errJsonData, internalServerError := errors.NewInternalServerError("Error while fetching the user from DB", err)
+		return "", "", "", "", "", internalServerError, errJsonData, internalServerError.Code
+	}
+
+	if user == nil {
+		slog.Debug(
+			"User is not present in the DB",
+			slog.String("Email:", email),
+		)
+		return "", "", "", "", "", nil, nil, 0
+	}
+
+	// compare password using utils.ComparePassword(hashedPassword, password)
+	err = utils.ComparePassword(user.PasswordHash, password)
+
+	if err != nil {
+		slog.Error(
+			"Password is incorrect, please retry",
+			slog.Any("Error", err),
+		)
+		errorJson, badRequestError := errors.NewBadRequestError("Password is incorrect, please retry", err)
+		return "", "", "", "", "", badRequestError, errorJson, badRequestError.Code
+	}
+
+	// get actual userID, userName, role from repository
+	var userID string = user.Id
+	var userName string = user.Name
+	var role string = user.Role
 
 	jwtToken, err := utils.GenerateToken(userID, email, role)
 	if err != nil {
@@ -38,7 +71,14 @@ func (s *AuthService) Login(email string, password string) (string, string, stri
 func (s *AuthService) Signup(name string, email string, password string, country string) (string, string, string, string, string, error, []byte, int) {
 	slog.Debug("Signup called", slog.String("Email", email))
 
-	// TODO: check if user already exists in repository
+	// check if user already exists in repository
+	userData, err := s.Repo.GetUser(email)
+
+	if userData != nil {
+		slog.Debug("User already exists, please login", slog.String("Email:", email))
+		errJsonData, badRequestError := errors.NewBadRequestError("User already exists, please login", nil)
+		return "", "", "", "", "", badRequestError, errJsonData, badRequestError.Code
+	}
 
 	hashedPassword, err := utils.HashPassword(password)
 	if err != nil {
@@ -47,8 +87,40 @@ func (s *AuthService) Signup(name string, email string, password string, country
 		return "", "", "", "", "", internalServerError, errorJson, internalServerError.Code
 	}
 
-	_ = hashedPassword
-	// TODO: store user in repository with hashedPassword, name, email, country
+	// get the user role from the db
+	var userRole string = "user"
+	exists, err := s.Repo.CheckUserAdmin(email)
+
+	if err != nil {
+		slog.Error("Error while fetching the user role", slog.Any("Error", err))
+		errorJson, internalServerError := errors.NewInternalServerError("Error while fetching the user role", err)
+		return "", "", "", "", "", internalServerError, errorJson, internalServerError.Code
+	}
+
+	if exists {
+		userRole = "admin"
+	}
+
+	// store user in repository with hashedPassword, name, email, country
+	var user models.Users
+	user = models.Users{
+		Id:           "",
+		Email:        email,
+		Country:      country,
+		PasswordHash: hashedPassword,
+		Name:         name,
+		Role:         userRole,
+		Provider:     "local",
+		CreatedAt:    "",
+	}
+
+	err = s.Repo.StoreLocalUser(user)
+
+	if err != nil {
+		slog.Error("Error while storing the user info", slog.Any("Error", err))
+		errorJson, internalServerError := errors.NewInternalServerError("Error while storing the user info", err)
+		return "", "", "", "", "", internalServerError, errorJson, internalServerError.Code
+	}
 
 	// Auto-login after signup
 	jwtToken, userID, userName, userEmail, role, loginErr, errJson, errorCode := s.Login(email, password)
@@ -66,20 +138,54 @@ func (s *AuthService) OAuthLogin(email string, name string, provider string) (st
 		slog.String("Provider", provider),
 	)
 
-	// TODO: upsert user in repository (create if not exists, update if exists)
+	// get the user role from the db
+	var userRole string = "user"
+	exists, err := s.Repo.CheckUserAdmin(email)
 
-	// TODO: get actual userID, role from repository
-	var userID string
-	var role string
+	if err != nil {
+		slog.Error("Error while fetching the user role", slog.Any("Error", err))
+		errorJson, internalServerError := errors.NewInternalServerError("Error while fetching the user role", err)
+		return "", "", "", "", "", internalServerError, errorJson, internalServerError.Code
+	}
 
-	jwtToken, err := utils.GenerateToken(userID, email, role)
+	if exists {
+		userRole = "admin"
+	}
+
+	// upsert user in repository (create if not exists, update if exists)
+	var user models.Users
+	user = models.Users{
+		Id:           "",
+		Email:        email,
+		Country:      "",
+		PasswordHash: "",
+		Name:         name,
+		Role:         userRole,
+		Provider:     provider,
+		CreatedAt:    "",
+	}
+
+	err = s.Repo.UpsertOauthUser(user)
+
+	if err != nil {
+		slog.Error("Error while storing the user info", slog.Any("Error", err))
+		errorJson, internalServerError := errors.NewInternalServerError("Error while storing the user info", err)
+		return "", "", "", "", "", internalServerError, errorJson, internalServerError.Code
+	}
+
+	// get actual userID, role from repository
+	userData, err := s.Repo.GetUser(email)
+
+	var userID string = userData.Id
+
+	jwtToken, err := utils.GenerateToken(userID, email, userRole)
 	if err != nil {
 		slog.Error("Error while generating the JWT token", slog.Any("Error", err))
 		errorJson, internalServerError := errors.NewInternalServerError("Error while generating the JWT token", err)
 		return "", "", "", "", "", internalServerError, errorJson, internalServerError.Code
 	}
 
-	return jwtToken, userID, name, email, role, nil, nil, 0
+	return jwtToken, userID, name, email, userRole, nil, nil, 0
 }
 
 func (s *AuthService) ValidateLoginRequest(email string, password string) ([]byte, int) {

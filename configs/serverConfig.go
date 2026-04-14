@@ -24,6 +24,9 @@ type ServerConfig struct {
 	LoginAPI           string
 	SignupAPI          string
 	LogoutAPI          string
+	ProjectAPI         string
+	UpdateProjectAPI   string
+	DbConnectionString string
 }
 
 var serverConfig *ServerConfig
@@ -51,6 +54,9 @@ func InitServerConfig() {
 		LoginAPI:           os.Getenv("LOGIN_API"),
 		SignupAPI:          os.Getenv("SIGNUP_API"),
 		LogoutAPI:          os.Getenv("LOGOUT_API"),
+		ProjectAPI:         os.Getenv("PROJECT_API"),
+		UpdateProjectAPI:   os.Getenv("UPDATE_PROJECT_API"),
+		DbConnectionString: os.Getenv("DATABASE_URL"),
 	}
 }
 

@@ -61,11 +61,11 @@ func ValidateToken(tokenString string) (*Claims, error, []byte, int) {
 	})
 
 	if err != nil {
-		slog.Error("Error while parsing the token",
+		slog.Warn("Error while parsing the token",
 			slog.Any("Error", err),
 		)
-		errorJson, internalServerError := errors.NewInternalServerError("Error while parsing the token", err)
-		return nil, internalServerError, errorJson, internalServerError.Code
+		errorJson, badRequestError := errors.NewBadRequestError("Invalid or expired token", err)
+		return nil, badRequestError, errorJson, badRequestError.Code
 	}
 
 	if !parsedToken.Valid {

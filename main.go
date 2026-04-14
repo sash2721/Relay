@@ -12,12 +12,15 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/sash2721/Relay/configs"
+	"github.com/sash2721/Relay/db"
 	"github.com/sash2721/Relay/handlers"
 	"github.com/sash2721/Relay/middlewares"
+	"github.com/sash2721/Relay/repositories"
+	"github.com/sash2721/Relay/services"
 )
 
 func main() {
-	fmt.Println("Relay starts!")
+	slog.Info("Relay Starts!🚀")
 
 	configs.InitServerConfig()
 	configs.InitProviders()
@@ -33,20 +36,54 @@ func main() {
 
 	serverConfig := configs.GetServerConfig()
 
+	// creating db connection and running the migrations
+	err := db.Connect(serverConfig.DbConnectionString)
+	if err != nil {
+		slog.Error("DB connection not established!", slog.Any("Error", err))
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	err = db.RunMigrations()
+	if err != nil {
+		slog.Error(
+			"Failed to run the migrations",
+			slog.Any("Error:", err),
+		)
+		os.Exit(1)
+	}
+
+	// creating repositories
+	authRepository := repositories.NewAuthRepository(db.Pool)
+	projectRepository := repositories.NewProjectRepository(db.Pool)
+
+	// creating services
+	authService := services.NewAuthService(authRepository)
+	projectService := services.NewProjectService(projectRepository)
+
+	// creating handlers and injecting services into them
+	authHandler := handlers.AuthHandler{Service: authService}
+	projectHandler := handlers.ProjectHandler{Service: projectService}
+
 	// public routes
-	r.Post(serverConfig.LoginAPI, handlers.HandleLogin)
-	r.Post(serverConfig.SignupAPI, handlers.HandleSignup)
-	r.Get(serverConfig.GoogleLoginAPI, handlers.HandleGoogleLogin)
-	r.Get(serverConfig.GoogleCallbackAPI, handlers.HandleGoogleCallback)
-	r.Get(serverConfig.GithubLoginAPI, handlers.HandleGithubLogin)
-	r.Get(serverConfig.GithubCallbackAPI, handlers.HandleGithubCallback)
+	r.Post(serverConfig.LoginAPI, authHandler.HandleLogin)
+	r.Post(serverConfig.SignupAPI, authHandler.HandleSignup)
+	r.Get(serverConfig.GoogleLoginAPI, authHandler.HandleGoogleLogin)
+	r.Get(serverConfig.GoogleCallbackAPI, authHandler.HandleGoogleCallback)
+	r.Get(serverConfig.GithubLoginAPI, authHandler.HandleGithubLogin)
+	r.Get(serverConfig.GithubCallbackAPI, authHandler.HandleGithubCallback)
 	r.Get(serverConfig.LogoutAPI, handlers.HandleLogout)
 
 	// protected routes
 	r.Group(func(r chi.Router) {
 		r.Use(middlewares.AuthZMiddleware)
 		r.Use(middlewares.AuthNMiddleware)
-		// TODO: add protected routes here
+
+		// add protected routes here
+		r.Post(serverConfig.ProjectAPI, projectHandler.HandleCreateProject)
+		r.Get(serverConfig.ProjectAPI, projectHandler.HandleListProjects)
+		r.Get(serverConfig.UpdateProjectAPI, projectHandler.HandleGetProject)
+		r.Delete(serverConfig.UpdateProjectAPI, projectHandler.HandleDeleteProject)
 	})
 
 	var server *http.Server
@@ -82,7 +119,7 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	err := server.Shutdown(shutdownCtx)
+	err = server.Shutdown(shutdownCtx)
 	if err != nil {
 		slog.Error("Server forced to shutdown:",
 			slog.Any("Error", err),

@@ -7,53 +7,15 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/sash2721/Relay/configs"
+	"github.com/sash2721/Relay/models"
 	"github.com/sash2721/Relay/services"
 )
 
-type LoginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+type AuthHandler struct {
+	Service *services.AuthService
 }
-
-type SignupRequest struct {
-	Name     string `json:"name"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
-	Country  string `json:"country"`
-}
-
-type AuthResponse struct {
-	Token  string `json:"token"`
-	UserID string `json:"userID"`
-	Name   string `json:"name"`
-	Email  string `json:"email"`
-	Role   string `json:"role"`
-}
-
-const (
-	stateCookieName = "oauth_state"
-	jwtCookieName   = "auth_token"
-	SessionDuration = 24 * time.Hour
-
-	googleUserInfoURL = "https://www.googleapis.com/oauth2/v2/userinfo"
-	githubUserInfoURL = "https://api.github.com/user"
-	githubEmailURL    = "https://api.github.com/user/emails"
-)
-
-type OAuthUserInfo struct {
-	Email string `json:"email"`
-	Name  string `json:"name"`
-}
-
-type GithubEmail struct {
-	Email   string `json:"email"`
-	Primary bool   `json:"primary"`
-}
-
-var authService = services.NewAuthService()
 
 func generateState() (string, error) {
 	b := make([]byte, 16)
@@ -73,19 +35,19 @@ func isSecureCookie() bool {
 
 func setJWTCookie(w http.ResponseWriter, token string) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     jwtCookieName,
+		Name:     models.JwtCookieName,
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   isSecureCookie(),
 		SameSite: http.SameSiteLaxMode,
-		MaxAge:   int(SessionDuration.Seconds()),
+		MaxAge:   int(models.SessionDuration.Seconds()),
 	})
 }
 
 func clearJWTCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     jwtCookieName,
+		Name:     models.JwtCookieName,
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   isSecureCookie(),
@@ -95,24 +57,24 @@ func clearJWTCookie(w http.ResponseWriter) {
 
 func setStateCookie(w http.ResponseWriter, state string) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     stateCookieName,
+		Name:     models.StateCookieName,
 		Value:    state,
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   isSecureCookie(),
-		MaxAge:   int((5 * time.Minute).Seconds()),
+		MaxAge:   300,
 	})
 }
 
 func validateState(w http.ResponseWriter, r *http.Request) bool {
-	stateCookie, err := r.Cookie(stateCookieName)
+	stateCookie, err := r.Cookie(models.StateCookieName)
 	if err != nil {
 		slog.Warn("Missing OAuth state cookie")
 		return false
 	}
 
 	http.SetCookie(w, &http.Cookie{
-		Name:   stateCookieName,
+		Name:   models.StateCookieName,
 		Path:   "/",
 		MaxAge: -1,
 	})
@@ -129,8 +91,8 @@ func validateState(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
-func HandleLogin(w http.ResponseWriter, r *http.Request) {
-	var req LoginRequest
+func (s *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
+	var req models.LoginRequest
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
 		slog.Error("Error while decoding the login request body",
@@ -140,7 +102,7 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	errJson, errorCode := authService.ValidateLoginRequest(req.Email, req.Password)
+	errJson, errorCode := s.Service.ValidateLoginRequest(req.Email, req.Password)
 	if errJson != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(errorCode)
@@ -148,7 +110,7 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, userID, name, email, role, loginErr, errJson, errorCode := authService.Login(req.Email, req.Password)
+	token, userID, name, email, role, loginErr, errJson, errorCode := s.Service.Login(req.Email, req.Password)
 	if loginErr != nil {
 		slog.Error("Login failed",
 			slog.String("Email", req.Email),
@@ -168,7 +130,7 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(AuthResponse{
+	json.NewEncoder(w).Encode(models.AuthResponse{
 		Token:  token,
 		UserID: userID,
 		Name:   name,
@@ -177,8 +139,8 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func HandleSignup(w http.ResponseWriter, r *http.Request) {
-	var req SignupRequest
+func (s *AuthHandler) HandleSignup(w http.ResponseWriter, r *http.Request) {
+	var req models.SignupRequest
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
 		slog.Error("Error while decoding the signup request body",
@@ -188,7 +150,7 @@ func HandleSignup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	errJson, errorCode := authService.ValidateSignupRequest(req.Name, req.Email, req.Password, req.Country)
+	errJson, errorCode := s.Service.ValidateSignupRequest(req.Name, req.Email, req.Password, req.Country)
 	if errJson != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(errorCode)
@@ -196,7 +158,7 @@ func HandleSignup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, userID, name, email, role, signupErr, errJson, errorCode := authService.Signup(req.Name, req.Email, req.Password, req.Country)
+	token, userID, name, email, role, signupErr, errJson, errorCode := s.Service.Signup(req.Name, req.Email, req.Password, req.Country)
 	if signupErr != nil {
 		slog.Error("Signup failed",
 			slog.String("Email", req.Email),
@@ -216,7 +178,7 @@ func HandleSignup(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(AuthResponse{
+	json.NewEncoder(w).Encode(models.AuthResponse{
 		Token:  token,
 		UserID: userID,
 		Name:   name,
@@ -225,7 +187,7 @@ func HandleSignup(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func HandleGoogleLogin(w http.ResponseWriter, r *http.Request) {
+func (*AuthHandler) HandleGoogleLogin(w http.ResponseWriter, r *http.Request) {
 	state, err := generateState()
 	if err != nil {
 		slog.Error("Failed to generate state for Google login",
@@ -242,7 +204,7 @@ func HandleGoogleLogin(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 }
 
-func HandleGoogleCallback(w http.ResponseWriter, r *http.Request) {
+func (s *AuthHandler) HandleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 	if !validateState(w, r) {
 		http.Error(w, "invalid oauth state", http.StatusBadRequest)
 		return
@@ -265,7 +227,7 @@ func HandleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client := configs.GoogleOAuthConfig.Client(r.Context(), token)
-	resp, err := client.Get(googleUserInfoURL)
+	resp, err := client.Get(models.GoogleUserInfoURL)
 	if err != nil {
 		slog.Error("Failed to fetch user info from Google",
 			slog.Any("error", err),
@@ -284,7 +246,7 @@ func HandleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var userInfo OAuthUserInfo
+	var userInfo models.OAuthUserInfo
 	if err := json.Unmarshal(body, &userInfo); err != nil {
 		slog.Error("Failed to parse Google user info",
 			slog.Any("error", err),
@@ -297,7 +259,7 @@ func HandleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 		slog.String("provider", "google"),
 	)
 
-	jwtToken, userID, userName, email, role, oauthErr, errJson, errorCode := authService.OAuthLogin(userInfo.Email, userInfo.Name, "google")
+	jwtToken, userID, userName, email, role, oauthErr, errJson, errorCode := s.Service.OAuthLogin(userInfo.Email, userInfo.Name, "google")
 	if oauthErr != nil {
 		slog.Error("Failed to process Google OAuth login",
 			slog.Any("error", oauthErr),
@@ -311,7 +273,7 @@ func HandleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 	setJWTCookie(w, jwtToken)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(AuthResponse{
+	json.NewEncoder(w).Encode(models.AuthResponse{
 		Token:  jwtToken,
 		UserID: userID,
 		Name:   userName,
@@ -320,7 +282,7 @@ func HandleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func HandleGithubLogin(w http.ResponseWriter, r *http.Request) {
+func (*AuthHandler) HandleGithubLogin(w http.ResponseWriter, r *http.Request) {
 	state, err := generateState()
 	if err != nil {
 		slog.Error("Failed to generate state for GitHub login",
@@ -337,7 +299,7 @@ func HandleGithubLogin(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 }
 
-func HandleGithubCallback(w http.ResponseWriter, r *http.Request) {
+func (s *AuthHandler) HandleGithubCallback(w http.ResponseWriter, r *http.Request) {
 	if !validateState(w, r) {
 		http.Error(w, "invalid oauth state", http.StatusBadRequest)
 		return
@@ -360,7 +322,7 @@ func HandleGithubCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client := configs.GithubOAuthConfig.Client(r.Context(), token)
-	resp, err := client.Get(githubUserInfoURL)
+	resp, err := client.Get(models.GithubUserInfoURL)
 	if err != nil {
 		slog.Error("Failed to fetch user info from GitHub",
 			slog.Any("error", err),
@@ -379,7 +341,7 @@ func HandleGithubCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var userInfo OAuthUserInfo
+	var userInfo models.OAuthUserInfo
 	if err := json.Unmarshal(body, &userInfo); err != nil {
 		slog.Error("Failed to parse GitHub user info",
 			slog.Any("error", err),
@@ -389,7 +351,7 @@ func HandleGithubCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if userInfo.Email == "" {
-		emailResp, err := client.Get(githubEmailURL)
+		emailResp, err := client.Get(models.GithubEmailURL)
 		if err != nil {
 			slog.Error("Failed to fetch email from GitHub emails API",
 				slog.Any("error", err),
@@ -408,7 +370,7 @@ func HandleGithubCallback(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		var emails []GithubEmail
+		var emails []models.GithubEmail
 		if err := json.Unmarshal(emailBody, &emails); err != nil {
 			slog.Error("Failed to parse GitHub emails",
 				slog.Any("error", err),
@@ -429,7 +391,7 @@ func HandleGithubCallback(w http.ResponseWriter, r *http.Request) {
 		slog.String("provider", "github"),
 	)
 
-	jwtToken, userID, userName, email, role, oauthErr, errJson, errorCode := authService.OAuthLogin(userInfo.Email, userInfo.Name, "github")
+	jwtToken, userID, userName, email, role, oauthErr, errJson, errorCode := s.Service.OAuthLogin(userInfo.Email, userInfo.Name, "github")
 	if oauthErr != nil {
 		slog.Error("Failed to process GitHub OAuth login",
 			slog.Any("error", oauthErr),
@@ -443,7 +405,7 @@ func HandleGithubCallback(w http.ResponseWriter, r *http.Request) {
 	setJWTCookie(w, jwtToken)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(AuthResponse{
+	json.NewEncoder(w).Encode(models.AuthResponse{
 		Token:  jwtToken,
 		UserID: userID,
 		Name:   userName,
