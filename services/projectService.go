@@ -20,24 +20,17 @@ func NewProjectService(repo *repositories.ProjectRepository) *ProjectService {
 
 func (s *ProjectService) CreateNewProject(userID string, projectName string, repoUrl string) ([]byte, error, []byte, int) {
 	// check if the user exists in the DB or not
-	userExists, err := s.Repo.UserLookup(userID)
+	err, errJsondata, errCode := s.isUserPresent(userID)
 
 	if err != nil {
-		slog.Error(
-			"Error while performing user lookup",
-			slog.Any("Error:", err),
-		)
-		errJsonData, internalServerError := errors.NewInternalServerError("Error while performing user lookup", err)
-		return nil, internalServerError, errJsonData, internalServerError.Code
+		return nil, err, errJsondata, errCode
 	}
 
-	if !userExists {
-		slog.Error(
-			"User not found in the database",
-			slog.Any("Error:", err),
-		)
-		errJsonData, notFoundError := errors.NewNotFoundError("User not found in the database", nil)
-		return nil, notFoundError, errJsonData, notFoundError.Code
+	// validate the project name
+	if projectName == "" {
+		slog.Error("Project name is required")
+		errJsonData, badRequestError := errors.NewBadRequestError("Project name is required", nil)
+		return nil, badRequestError, errJsonData, badRequestError.Code
 	}
 
 	// validate the GitHub URL sent if its a correct URL or not
@@ -98,7 +91,7 @@ func (s *ProjectService) CreateNewProject(userID string, projectName string, rep
 		return nil, internalServerError, errJsonData, internalServerError.Code
 	}
 
-	// serialise the response
+	// prepare the response data
 	response := models.ProjectResponse{
 		Id:                 repoData.Id,
 		ProjectName:        repoData.ProjectName,
@@ -109,7 +102,208 @@ func (s *ProjectService) CreateNewProject(userID string, projectName string, rep
 		UpdatedAt:          repoData.UpdatedAt,
 	}
 
-	responseData, err := json.Marshal(response)
+	// serializing the response data
+	responseJson, err, errJson, responseCode := serializeResponse(response, 201)
+
+	if err != nil {
+		return nil, err, errJson, responseCode
+	}
+
+	return responseJson, nil, nil, responseCode
+}
+
+func (s *ProjectService) ListAllProjects(userID string) ([]byte, error, []byte, int) {
+	// check if the user exists in the DB or not
+	err, errJsondata, errCode := s.isUserPresent(userID)
+
+	if err != nil {
+		return nil, err, errJsondata, errCode
+	}
+
+	// call the repository for the projects list
+	projectList, err := s.Repo.ListProjects(userID)
+
+	if err != nil {
+		slog.Error(
+			"Error while fetching the projects from the database",
+			slog.Any("Error:", err),
+		)
+		errJsonData, internalServerError := errors.NewInternalServerError("Error while fetching the projects from the database", err)
+		return nil, internalServerError, errJsonData, internalServerError.Code
+	}
+
+	// create the response list
+	var projectResponses []models.ProjectResponse
+
+	for _, project := range projectList {
+		projectResponses = append(projectResponses, models.ProjectResponse{
+			Id:                 project.Id,
+			ProjectName:        project.ProjectName,
+			ProjectType:        project.ProjectType,
+			RepoURL:            project.RepoURL,
+			ActiveDeploymentId: project.ActiveDeploymentId,
+			CreatedAt:          project.CreatedAt,
+			UpdatedAt:          project.UpdatedAt,
+		})
+	}
+
+	response := models.ProjectListResponse{
+		Projects: projectResponses,
+		Count:    len(projectResponses),
+	}
+
+	// serializing the response data
+	responseJson, err, errJson, responseCode := serializeResponse(response, 200)
+
+	if err != nil {
+		return nil, err, errJson, responseCode
+	}
+
+	return responseJson, nil, nil, responseCode
+}
+
+func (s *ProjectService) GetProject(projectID string, userID string) ([]byte, error, []byte, int) {
+	// check if the user exists in the DB or not
+	err, errJsondata, errCode := s.isUserPresent(userID)
+
+	if err != nil {
+		return nil, err, errJsondata, errCode
+	}
+
+	// calling the repository for the project details
+	projectData, err := s.Repo.GetProject(projectID)
+
+	if err != nil {
+		slog.Error(
+			"Error while fetching the project details from the database",
+			slog.Any("Error:", err),
+		)
+		errJsonData, internalServerError := errors.NewInternalServerError("Error while fetching the project details from the database", err)
+		return nil, internalServerError, errJsonData, internalServerError.Code
+	}
+
+	// checking if projectData exists or not
+	// and if the projectData is for the right userID
+	if projectData == nil || projectData.UserId != userID {
+		slog.Debug(
+			"Project not found in the database",
+		)
+		errJsonData, notFoundError := errors.NewNotFoundError("Project not found in the database", nil)
+		return nil, notFoundError, errJsonData, notFoundError.Code
+	}
+
+	// create the response structure to return
+	projectResponse := models.ProjectResponse{
+		Id:                 projectID,
+		ProjectName:        projectData.ProjectName,
+		ProjectType:        projectData.ProjectType,
+		RepoURL:            projectData.RepoURL,
+		ActiveDeploymentId: projectData.ActiveDeploymentId,
+		CreatedAt:          projectData.CreatedAt,
+		UpdatedAt:          projectData.UpdatedAt,
+	}
+
+	// serializing the response data
+	responseJson, err, errJson, responseCode := serializeResponse(projectResponse, 200)
+
+	if err != nil {
+		return nil, err, errJson, responseCode
+	}
+
+	return responseJson, nil, nil, responseCode
+}
+
+func (s *ProjectService) DeleteProject(projectID string, userID string) ([]byte, error, []byte, int) {
+	// check if the user exists in the DB or not
+	err, errJsondata, errCode := s.isUserPresent(userID)
+
+	if err != nil {
+		return nil, err, errJsondata, errCode
+	}
+
+	// calling the repository for first getting the projectDetails
+	projectData, err := s.Repo.GetProject(projectID)
+
+	if err != nil {
+		slog.Error(
+			"Error while fetching the project details from the database",
+			slog.Any("Error:", err),
+		)
+		errJsonData, internalServerError := errors.NewInternalServerError("Error while fetching the project details from the database", err)
+		return nil, internalServerError, errJsonData, internalServerError.Code
+	}
+
+	// checking if projectData exists or not
+	// and if the projectData is for the right userID
+	if projectData == nil || projectData.UserId != userID {
+		slog.Debug(
+			"Project not found in the database",
+		)
+		errJsonData, notFoundError := errors.NewNotFoundError("Project not found in the database", nil)
+		return nil, notFoundError, errJsonData, notFoundError.Code
+	}
+
+	// calling the repository to delete the project
+	err = s.Repo.DeleteProject(projectID, userID)
+
+	if err != nil {
+		slog.Error(
+			"Error while deleting the project",
+			slog.Any("Error:", err),
+		)
+		errJsonData, internalServerError := errors.NewInternalServerError("Error while deleting the project", err)
+		return nil, internalServerError, errJsonData, internalServerError.Code
+	}
+
+	// preparing the response sturcture
+	responseData := models.ProjectDeleteResponse{
+		Message: "Project Deleted Successfully",
+		Success: true,
+	}
+
+	// serializing the response data
+	responseJson, err, errJson, responseCode := serializeResponse(responseData, 200)
+
+	if err != nil {
+		return nil, err, errJson, responseCode
+	}
+
+	return responseJson, nil, nil, responseCode
+}
+
+// Helper functions
+func isValidGithubURL(url string) bool {
+	var githubURLRegex = regexp.MustCompile(`^https://github\.com/[\w.\-]+/[\w.\-]+/?$`)
+
+	return githubURLRegex.MatchString(url)
+}
+
+func (s *ProjectService) isUserPresent(userID string) (error, []byte, int) {
+	userExists, err := s.Repo.UserLookup(userID)
+
+	if err != nil {
+		slog.Error(
+			"Error while performing user lookup",
+			slog.Any("Error:", err),
+		)
+		errJsonData, internalServerError := errors.NewInternalServerError("Error while performing user lookup", err)
+		return internalServerError, errJsonData, internalServerError.Code
+	}
+
+	if !userExists {
+		slog.Error(
+			"User not found in the database",
+			slog.Any("Error:", err),
+		)
+		errJsonData, notFoundError := errors.NewNotFoundError("User not found in the database", nil)
+		return notFoundError, errJsonData, notFoundError.Code
+	}
+
+	return nil, nil, 0
+}
+
+func serializeResponse(responseData any, statusCode int) ([]byte, error, []byte, int) {
+	responseJson, err := json.Marshal(responseData)
 
 	if err != nil {
 		slog.Error(
@@ -121,24 +315,5 @@ func (s *ProjectService) CreateNewProject(userID string, projectName string, rep
 	}
 
 	// return
-	return responseData, nil, nil, 0
-}
-
-func (s *ProjectService) ListAllProjects(userName string, userEmail string) ([]byte, error) {
-	return nil, nil
-}
-
-func (s *ProjectService) GetProject(projectID string) ([]byte, error) {
-	return nil, nil
-}
-
-func (s *ProjectService) DeleteProject(projectID string) ([]byte, error) {
-	return nil, nil
-}
-
-// helper functions
-func isValidGithubURL(url string) bool {
-	var githubURLRegex = regexp.MustCompile(`^https://github\.com/[\w.\-]+/[\w.\-]+/?$`)
-
-	return githubURLRegex.MatchString(url)
+	return responseJson, nil, nil, statusCode
 }

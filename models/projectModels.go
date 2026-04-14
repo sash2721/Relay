@@ -19,3 +19,8 @@ type ProjectListResponse struct {
 	Projects []ProjectResponse `json:"projects"`
 	Count    int               `json:"count"`
 }
+
+type ProjectDeleteResponse struct {
+	Message string `json:"message"`
+	Success bool   `json:"success"`
+}
