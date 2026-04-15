@@ -3,6 +3,7 @@ package services
 import (
 	"encoding/json"
 	"log/slog"
+	"os"
 	"regexp"
 
 	"github.com/sash2721/Relay/errors"
@@ -68,8 +69,21 @@ func (s *ProjectService) CreateNewProject(userID string, projectName string, rep
 		return nil, conflictError, errJsonData, conflictError.Code
 	}
 
-	// TODO: write a service to detect the project type (for now hardcoding)
-	projectType := "Node.js"
+	// service to detect the project type
+	// clone the github repo
+	clonePath, err, errJsonData, responseCode := Clone(repoUrl)
+
+	if err != nil {
+		return nil, err, errJsonData, responseCode
+	}
+	defer os.RemoveAll(clonePath)
+
+	// determine the project type
+	projectType, err, errJsonData, responseCode := DetectProjectType(clonePath)
+
+	if err != nil {
+		return nil, err, errJsonData, responseCode
+	}
 
 	// create the projectData object
 	projectData := models.Projects{
