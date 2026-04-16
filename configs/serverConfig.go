@@ -27,6 +27,7 @@ type ServerConfig struct {
 	ProjectAPI         string
 	UpdateProjectAPI   string
 	DbConnectionString string
+	ArtifactsDir       string
 }
 
 var serverConfig *ServerConfig
@@ -57,6 +58,7 @@ func InitServerConfig() {
 		ProjectAPI:         os.Getenv("PROJECT_API"),
 		UpdateProjectAPI:   os.Getenv("UPDATE_PROJECT_API"),
 		DbConnectionString: os.Getenv("DATABASE_URL"),
+		ArtifactsDir:       os.Getenv("ARTIFACTS_DIR"),
 	}
 }
 
