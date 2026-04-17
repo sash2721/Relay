@@ -127,3 +127,15 @@ func (repo *ProjectRepository) ProjectLookup(repoUrl string, userID string) (boo
 
 	return projectExists, nil
 }
+
+func (repo *ProjectRepository) UpdateActiveDeployment(projectID string, deploymentID string) error {
+	query := `UPDATE projects SET active_deployment_id = $1, updated_at = NOW() WHERE id = $2`
+
+	_, err := repo.DB.Exec(context.Background(), query, deploymentID, projectID)
+
+	if err != nil {
+		return fmt.Errorf("failed to update active deployment: %w", err)
+	}
+
+	return nil
+}

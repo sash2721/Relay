@@ -12,7 +12,8 @@ import (
 )
 
 type ProjectService struct {
-	Repo *repositories.ProjectRepository
+	Repo        *repositories.ProjectRepository
+	BodyBuilder *BuilderService
 }
 
 func NewProjectService(repo *repositories.ProjectRepository) *ProjectService {
@@ -71,7 +72,7 @@ func (s *ProjectService) CreateNewProject(userID string, projectName string, rep
 
 	// service to detect the project type
 	// clone the github repo
-	clonePath, err, errJsonData, responseCode := Clone(repoUrl)
+	clonePath, err, errJsonData, responseCode := s.BodyBuilder.Clone(repoUrl)
 
 	if err != nil {
 		return nil, err, errJsonData, responseCode
@@ -79,7 +80,7 @@ func (s *ProjectService) CreateNewProject(userID string, projectName string, rep
 	defer os.RemoveAll(clonePath)
 
 	// determine the project type
-	projectType, err, errJsonData, responseCode := DetectProjectType(clonePath)
+	projectType, err, errJsonData, responseCode := s.BodyBuilder.DetectProjectType(clonePath)
 
 	if err != nil {
 		return nil, err, errJsonData, responseCode

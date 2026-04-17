@@ -29,7 +29,7 @@ func NewBuilderService(logStreamer *LogStreamer) *BuilderService {
 }
 
 // returns path of the cloned directory
-func Clone(repoURL string) (string, error, []byte, int) {
+func (s *BuilderService) Clone(repoURL string) (string, error, []byte, int) {
 	// create a temp directory
 	dirPath, err := os.MkdirTemp("", "repo-*")
 
@@ -66,7 +66,7 @@ func Clone(repoURL string) (string, error, []byte, int) {
 	return dirPath, nil, nil, http.StatusCreated
 }
 
-func DetectProjectType(cloneDir string) (string, error, []byte, int) {
+func (s *BuilderService) DetectProjectType(cloneDir string) (string, error, []byte, int) {
 	// check if the specified file exists in the cloned directory
 	// check for Go
 	_, err := os.Stat(filepath.Join(cloneDir, "go.mod"))
@@ -161,7 +161,7 @@ func DetectProjectType(cloneDir string) (string, error, []byte, int) {
 	return "Static HTML", nil, nil, http.StatusOK
 }
 
-func GetBuildConfig(projectType string) *models.BuildConfig {
+func (s *BuilderService) GetBuildConfig(projectType string) *models.BuildConfig {
 	switch projectType {
 	case "Go":
 		return &models.BuildConfig{
@@ -258,7 +258,7 @@ func (s *BuilderService) Build(clonedir string, projectType string, deploymentID
 	ctx := context.Background()
 
 	// get the build config (details)
-	buildConfigDetails := GetBuildConfig(projectType)
+	buildConfigDetails := s.GetBuildConfig(projectType)
 
 	// create a docker client
 	dockerClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
