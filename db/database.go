@@ -36,6 +36,7 @@ func RunMigrations() error {
 	files := []string{
 		"migrations/001_init_schema.sql",
 		"migrations/002_admins_table.sql",
+		"migrations/003_nullable_deployment_fields.sql",
 	}
 
 	for _, file := range files {

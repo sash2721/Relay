@@ -53,21 +53,25 @@ func main() {
 		os.Exit(1)
 	}
 
+	// initialising the log streamer
+	logStreamer := services.NewLogStreamer()
+
 	// creating repositories
 	authRepository := repositories.NewAuthRepository(db.Pool)
 	projectRepository := repositories.NewProjectRepository(db.Pool)
+	deploymentRepository := repositories.NewDeploymentRepository(db.Pool)
 
 	// creating services
 	authService := services.NewAuthService(authRepository)
 	projectService := services.NewProjectService(projectRepository)
-
-	// initialising the log streamer
-	logStreamer := services.NewLogStreamer()
+	builderService := services.NewBuilderService(logStreamer)
+	deploymentService := services.NewDeploymentService(deploymentRepository, projectRepository, builderService, logStreamer)
 
 	// creating handlers and injecting services into them
 	authHandler := handlers.AuthHandler{Service: authService}
 	projectHandler := handlers.ProjectHandler{Service: projectService}
 	logStreamHandler := handlers.LogStreamHandler{LogStreamer: logStreamer}
+	deploymentHandler := handlers.DeploymentHandler{Service: deploymentService}
 
 	// public routes
 	r.Post(serverConfig.LoginAPI, authHandler.HandleLogin)
@@ -84,11 +88,20 @@ func main() {
 		r.Use(middlewares.AuthNMiddleware)
 
 		// add protected routes here
+		// project handler
 		r.Post(serverConfig.ProjectAPI, projectHandler.HandleCreateProject)
 		r.Get(serverConfig.ProjectAPI, projectHandler.HandleListProjects)
 		r.Get(serverConfig.UpdateProjectAPI, projectHandler.HandleGetProject)
 		r.Delete(serverConfig.UpdateProjectAPI, projectHandler.HandleDeleteProject)
+
+		// log streamer
 		r.Get(serverConfig.StreamLogsAPI, logStreamHandler.HandlerLogStream)
+
+		// deployment handler
+		r.Post(serverConfig.TriggerDeploymentAPI, deploymentHandler.HandleTriggerDeployment)
+		r.Get(serverConfig.GetDeploymentAPI, deploymentHandler.HandleGetDeployment)
+		r.Get(serverConfig.ListDeploymentsAPI, deploymentHandler.HandleListDeployments)
+		r.Delete(serverConfig.DeleteDeploymentAPI, deploymentHandler.HandleDeleteDeployment)
 	})
 
 	var server *http.Server
