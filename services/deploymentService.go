@@ -18,10 +18,12 @@ type DeploymentService struct {
 	YTStreamer  *LogStreamer
 }
 
-func NewDeploymentService(depRepo *repositories.DeploymentRepository, projRepo *repositories.ProjectRepository) *DeploymentService {
+func NewDeploymentService(depRepo *repositories.DeploymentRepository, projRepo *repositories.ProjectRepository, builder *BuilderService, streamer *LogStreamer) *DeploymentService {
 	return &DeploymentService{
-		DepRepo:  depRepo,
-		ProjRepo: projRepo,
+		DepRepo:     depRepo,
+		ProjRepo:    projRepo,
+		BodyBuilder: builder,
+		YTStreamer:  streamer,
 	}
 }
 
