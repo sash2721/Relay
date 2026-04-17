@@ -1,0 +1,2 @@
+ALTER TABLE deployments ALTER COLUMN deployed_url DROP NOT NULL;
+ALTER TABLE deployments ALTER COLUMN subdomain DROP NOT NULL;
