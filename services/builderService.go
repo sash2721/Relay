@@ -1,6 +1,7 @@
 package services
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"io"
@@ -19,10 +20,12 @@ import (
 	"github.com/sash2721/Relay/models"
 )
 
-type BuilderService struct{}
+type BuilderService struct {
+	LogStream *LogStreamer
+}
 
-func NewBuilderService() *BuilderService {
-	return &BuilderService{}
+func NewBuilderService(logStreamer *LogStreamer) *BuilderService {
+	return &BuilderService{LogStream: logStreamer}
 }
 
 // returns path of the cloned directory
@@ -357,8 +360,20 @@ func (s *BuilderService) Build(clonedir string, projectType string, deploymentID
 	// wait for the app to start
 	statusCh, errCh := dockerClient.ContainerWait(ctx, containerResponse.ID, container.WaitConditionNotRunning)
 
-	// stream logs
-	io.Copy(os.Stdout, logReader)
+	// stream logs — use stdcopy to strip Docker log headers
+	scanner := bufio.NewScanner(logReader)
+	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+	for scanner.Scan() {
+		line := scanner.Text()
+		// Docker log lines have 8-byte header prefix, strip non-printable chars
+		cleanLine := strings.TrimLeftFunc(line, func(r rune) bool {
+			return r < 32 && r != '\t' && r != '\n'
+		})
+		if cleanLine != "" {
+			s.LogStream.Publish(deploymentID, cleanLine)
+		}
+	}
+	s.LogStream.Complete(deploymentID)
 
 	// check for exit code
 	select {
