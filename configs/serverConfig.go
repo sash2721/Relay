@@ -26,6 +26,7 @@ type ServerConfig struct {
 	LogoutAPI          string
 	ProjectAPI         string
 	UpdateProjectAPI   string
+	StreamLogsAPI      string
 	DbConnectionString string
 	ArtifactsDir       string
 }
@@ -57,6 +58,7 @@ func InitServerConfig() {
 		LogoutAPI:          os.Getenv("LOGOUT_API"),
 		ProjectAPI:         os.Getenv("PROJECT_API"),
 		UpdateProjectAPI:   os.Getenv("UPDATE_PROJECT_API"),
+		StreamLogsAPI:      os.Getenv("STREAM_LOGS_API"),
 		DbConnectionString: os.Getenv("DATABASE_URL"),
 		ArtifactsDir:       os.Getenv("ARTIFACTS_DIR"),
 	}

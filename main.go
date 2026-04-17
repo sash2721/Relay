@@ -61,9 +61,13 @@ func main() {
 	authService := services.NewAuthService(authRepository)
 	projectService := services.NewProjectService(projectRepository)
 
+	// initialising the log streamer
+	logStreamer := services.NewLogStreamer()
+
 	// creating handlers and injecting services into them
 	authHandler := handlers.AuthHandler{Service: authService}
 	projectHandler := handlers.ProjectHandler{Service: projectService}
+	logStreamHandler := handlers.LogStreamHandler{LogStreamer: logStreamer}
 
 	// public routes
 	r.Post(serverConfig.LoginAPI, authHandler.HandleLogin)
@@ -84,6 +88,7 @@ func main() {
 		r.Get(serverConfig.ProjectAPI, projectHandler.HandleListProjects)
 		r.Get(serverConfig.UpdateProjectAPI, projectHandler.HandleGetProject)
 		r.Delete(serverConfig.UpdateProjectAPI, projectHandler.HandleDeleteProject)
+		r.Get(serverConfig.StreamLogsAPI, logStreamHandler.HandlerLogStream)
 	})
 
 	var server *http.Server
