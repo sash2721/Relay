@@ -33,6 +33,18 @@ func (s *DeploymentService) TriggerDeployment(userID string, projectID string) (
 		return nil, ownerErr, errJsonData, errCode
 	}
 
+	// check for active deployments in progress
+	hasActive, activeErr := s.DepRepo.HasActiveDeployment(projectID)
+	if activeErr != nil {
+		slog.Error("Failed to check active deployments", slog.Any("Error", activeErr))
+		errJsonData, internalServerError := errors.NewInternalServerError("Failed to check active deployments", activeErr)
+		return nil, internalServerError, errJsonData, internalServerError.Code
+	}
+	if hasActive {
+		errJsonData, conflictError := errors.NewConflictError("A deployment is already in progress for this project", nil)
+		return nil, conflictError, errJsonData, conflictError.Code
+	}
+
 	// create a deployment record with pending status
 	createDeployDetails := models.Deployments{
 		ProjectId: projectID,
@@ -220,6 +232,9 @@ func (s *DeploymentService) DeleteDeployment(userID string, projectID string, de
 	if ownerErr != nil {
 		return nil, ownerErr, errJsonData, errCode
 	}
+
+	// clean up artifacts
+	CleanupArtifacts(deploymentID)
 
 	// call the repository for delete the deployment
 	deleteErr := s.DepRepo.DeleteDeployment(deploymentID)
