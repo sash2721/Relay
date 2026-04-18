@@ -73,6 +73,23 @@ export default function ProjectDetail() {
                 {deploying ? 'Deploying...' : '🚀 Deploy Now'}
               </Button>
             </div>
+            <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
+              <Button
+                variant="secondary"
+                onClick={async () => {
+                  if (!window.confirm('Delete this project and all its deployments?')) return
+                  try {
+                    await axios.delete(`/api/projects/${projectId}`, { headers: { Authorization: `Bearer ${token}` } })
+                    navigate('/dashboard')
+                  } catch (err) {
+                    setDeployError(err.response?.data?.message || 'Failed to delete project')
+                  }
+                }}
+                style={{ color: '#f87171', borderColor: 'rgba(248,113,113,0.3)' }}
+              >
+                🗑 Delete Project
+              </Button>
+            </div>
             {deployError && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginTop: 16, padding: 12, borderRadius: 10, fontSize: 13, color: '#f87171', background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)' }}>
                 {deployError}
@@ -114,6 +131,22 @@ export default function ProjectDetail() {
                           </a>
                         )}
                         <span style={{ fontSize: 12, color: '#64748b' }}>{new Date(dep.createdAt).toLocaleString()}</span>
+                        <motion.button
+                          whileHover={{ scale: 1.1 }}
+                          whileTap={{ scale: 0.9 }}
+                          onClick={async (e) => {
+                            e.stopPropagation()
+                            if (!window.confirm('Delete this deployment?')) return
+                            try {
+                              await axios.delete(`/api/projects/${projectId}/deployments/${dep.id}`, { headers: { Authorization: `Bearer ${token}` } })
+                              fetchData()
+                            } catch {}
+                          }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#f87171', padding: '4px 8px' }}
+                          title="Delete deployment"
+                        >
+                          🗑
+                        </motion.button>
                         <span style={{ color: '#2563eb' }}>→</span>
                       </div>
                     </div>
