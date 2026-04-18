@@ -33,6 +33,8 @@ type ServerConfig struct {
 	DeleteDeploymentAPI  string
 	DbConnectionString   string
 	ArtifactsDir         string
+	RelayDomain          string
+	ProxyPort            string
 }
 
 var serverConfig *ServerConfig
@@ -69,6 +71,8 @@ func InitServerConfig() {
 		DeleteDeploymentAPI:  os.Getenv("DELETE_DEPLOYMENT_API"),
 		DbConnectionString:   os.Getenv("DATABASE_URL"),
 		ArtifactsDir:         os.Getenv("ARTIFACTS_DIR"),
+		RelayDomain:          os.Getenv("RELAY_DOMAIN"),
+		ProxyPort:            os.Getenv("PROXY_PORT"),
 	}
 }
 

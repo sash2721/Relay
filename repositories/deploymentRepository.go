@@ -157,3 +157,21 @@ func (repo *DeploymentRepository) CreateDeploymentLog(log models.DeploymentLogs)
 
 	return nil
 }
+
+func (repo *DeploymentRepository) GetDeploymentBySubdomain(subdomain string) (*models.Deployments, error) {
+	query := `
+		SELECT id, project_id, status, COALESCE(deployed_url, '') AS deployed_url, COALESCE(subdomain, '') AS subdomain, COALESCE(failure_reason, '') AS failure_reason, created_at::text, updated_at::text FROM deployments 
+		WHERE subdomain = $1 AND status = 'live'
+	`
+
+	row := repo.DB.QueryRow(context.Background(), query, subdomain)
+
+	var deploymentDetails models.Deployments
+	err := row.Scan(&deploymentDetails.Id, &deploymentDetails.ProjectId, &deploymentDetails.Status, &deploymentDetails.DeployedURL, &deploymentDetails.Subdomain, &deploymentDetails.FailureReason, &deploymentDetails.CreatedAt, &deploymentDetails.UpdatedAt)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch deployment details: %w", err)
+	}
+
+	return &deploymentDetails, nil
+}
