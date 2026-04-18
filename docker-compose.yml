@@ -1,16 +1,11 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: app_postgres
-    restart: unless-stopped
+  relay:
+    build: .
     ports:
-      - "5433:5432"
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: app_dev
+      - "3000:3000"
+      - "8080:8080"
     volumes:
-      - pgdata:/var/lib/postgresql/data
-
-volumes:
-  pgdata:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./artifacts:/app/artifacts
+    env_file:
+      - .env
