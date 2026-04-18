@@ -51,8 +51,19 @@ func (l *LogStreamHandler) HandlerLogStream(w http.ResponseWriter, r *http.Reque
 	ch := l.LogStreamer.Subscribe(deploymentID)
 	defer l.LogStreamer.Unsubscribe(deploymentID, ch)
 
-	for msg := range ch {
-		fmt.Fprintf(w, "%s\n", msg)
-		flusher.Flush()
+	ctx := r.Context()
+	for {
+		select {
+		case <-ctx.Done():
+			// client disconnected
+			return
+		case msg, ok := <-ch:
+			if !ok {
+				// channel closed — build complete
+				return
+			}
+			fmt.Fprintf(w, "data: %s\n\n", msg)
+			flusher.Flush()
+		}
 	}
 }

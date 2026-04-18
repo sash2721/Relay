@@ -120,7 +120,7 @@ func main() {
 			Addr:         serverConfig.Port,
 			Handler:      r,
 			ReadTimeout:  10 * time.Second,
-			WriteTimeout: 10 * time.Second,
+			WriteTimeout: 0,
 			IdleTimeout:  60 * time.Second,
 		}
 	}

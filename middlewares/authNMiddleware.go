@@ -12,6 +12,13 @@ func AuthNMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authzToken := r.Header.Get("Authorization")
 
+		// Also check query param for SSE connections
+		if authzToken == "" {
+			if qToken := r.URL.Query().Get("token"); qToken != "" {
+				authzToken = "Bearer " + qToken
+			}
+		}
+
 		if authzToken == "" {
 			slog.Warn("Authorization header missing in AuthN check",
 				slog.String("Path", r.URL.Path),

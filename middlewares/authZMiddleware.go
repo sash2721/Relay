@@ -14,6 +14,13 @@ func AuthZMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authzToken := r.Header.Get("Authorization")
 
+		// Also check query param for SSE connections (EventSource can't set headers)
+		if authzToken == "" {
+			if qToken := r.URL.Query().Get("token"); qToken != "" {
+				authzToken = "Bearer " + qToken
+			}
+		}
+
 		if authzToken == "" {
 			slog.Warn("Authorization header missing",
 				slog.String("Path", r.URL.Path),
