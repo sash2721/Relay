@@ -35,6 +35,12 @@ func (s *ProjectService) CreateNewProject(userID string, projectName string, rep
 		return nil, badRequestError, errJsonData, badRequestError.Code
 	}
 
+	if len(projectName) > 100 {
+		slog.Error("Project name is too long")
+		errJsonData, badRequestError := errors.NewBadRequestError("Project name must be 100 characters or less", nil)
+		return nil, badRequestError, errJsonData, badRequestError.Code
+	}
+
 	// validate the GitHub URL sent if its a correct URL or not
 	validUrl := isValidGithubURL(repoUrl)
 

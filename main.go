@@ -57,6 +57,9 @@ func main() {
 	// initialising the log streamer
 	logStreamer := services.NewLogStreamer()
 
+	// start cleanup job
+	services.StartCleanupJob()
+
 	// creating repositories
 	authRepository := repositories.NewAuthRepository(db.Pool)
 	projectRepository := repositories.NewProjectRepository(db.Pool)
@@ -99,7 +102,12 @@ func main() {
 		r.Get(serverConfig.StreamLogsAPI, logStreamHandler.HandlerLogStream)
 
 		// deployment handler
-		r.Post(serverConfig.TriggerDeploymentAPI, deploymentHandler.HandleTriggerDeployment)
+		// adding rate limit to the trigger deployment
+		r.Post(serverConfig.TriggerDeploymentAPI,
+			middlewares.RateLimitMiddleware(
+				http.HandlerFunc(deploymentHandler.HandleTriggerDeployment),
+			).ServeHTTP,
+		)
 		r.Get(serverConfig.GetDeploymentAPI, deploymentHandler.HandleGetDeployment)
 		r.Get(serverConfig.ListDeploymentsAPI, deploymentHandler.HandleListDeployments)
 		r.Delete(serverConfig.DeleteDeploymentAPI, deploymentHandler.HandleDeleteDeployment)
@@ -112,7 +120,7 @@ func main() {
 			Addr:         serverConfig.Port,
 			Handler:      r,
 			ReadTimeout:  10 * time.Second,
-			WriteTimeout: 10 * time.Second,
+			WriteTimeout: 0,
 			IdleTimeout:  60 * time.Second,
 		}
 	}

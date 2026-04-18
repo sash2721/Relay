@@ -158,6 +158,17 @@ func (repo *DeploymentRepository) CreateDeploymentLog(log models.DeploymentLogs)
 	return nil
 }
 
+func (repo *DeploymentRepository) HasActiveDeployment(projectID string) (bool, error) {
+	query := `SELECT EXISTS(SELECT 1 FROM deployments WHERE project_id = $1 AND status IN ('pending', 'cloning', 'detecting', 'building', 'deploying'))`
+
+	var exists bool
+	err := repo.DB.QueryRow(context.Background(), query, projectID).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("failed to check active deployments: %w", err)
+	}
+	return exists, nil
+}
+
 func (repo *DeploymentRepository) GetDeploymentBySubdomain(subdomain string) (*models.Deployments, error) {
 	query := `
 		SELECT id, project_id, status, COALESCE(deployed_url, '') AS deployed_url, COALESCE(subdomain, '') AS subdomain, COALESCE(failure_reason, '') AS failure_reason, created_at::text, updated_at::text FROM deployments 

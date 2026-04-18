@@ -338,6 +338,7 @@ func (s *BuilderService) Build(clonedir string, projectType string, deploymentID
 			"Error while starting the container",
 			slog.Any("Error:", err),
 		)
+		dockerClient.ContainerRemove(ctx, containerResponse.ID, container.RemoveOptions{Force: true})
 		errJsonData, internalServerError := errors.NewInternalServerError("Error while starting the container", err)
 		return "", internalServerError, errJsonData, internalServerError.Code
 	}
@@ -361,6 +362,7 @@ func (s *BuilderService) Build(clonedir string, projectType string, deploymentID
 	statusCh, errCh := dockerClient.ContainerWait(ctx, containerResponse.ID, container.WaitConditionNotRunning)
 
 	// stream logs — use stdcopy to strip Docker log headers
+	var lastLines []string
 	scanner := bufio.NewScanner(logReader)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 	for scanner.Scan() {
@@ -371,6 +373,11 @@ func (s *BuilderService) Build(clonedir string, projectType string, deploymentID
 		})
 		if cleanLine != "" {
 			s.LogStream.Publish(deploymentID, cleanLine)
+			// keep last 5 lines for error reporting
+			lastLines = append(lastLines, cleanLine)
+			if len(lastLines) > 5 {
+				lastLines = lastLines[1:]
+			}
 		}
 	}
 	s.LogStream.Complete(deploymentID)
@@ -385,8 +392,9 @@ func (s *BuilderService) Build(clonedir string, projectType string, deploymentID
 		}
 	case status := <-statusCh:
 		if status.StatusCode != 0 {
-			slog.Error("Build failed", slog.Int64("ExitCode", status.StatusCode))
-			errJsonData, internalServerError := errors.NewInternalServerError("Build failed with non-zero exit code", nil)
+			failureDetail := strings.Join(lastLines, " | ")
+			slog.Error("Build failed", slog.Int64("ExitCode", status.StatusCode), slog.String("LastOutput", failureDetail))
+			errJsonData, internalServerError := errors.NewInternalServerError("Build failed: "+failureDetail, nil)
 			return "", internalServerError, errJsonData, internalServerError.Code
 		}
 	}
