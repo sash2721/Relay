@@ -15,6 +15,7 @@ import (
 	"github.com/sash2721/Relay/db"
 	"github.com/sash2721/Relay/handlers"
 	"github.com/sash2721/Relay/middlewares"
+	"github.com/sash2721/Relay/proxy"
 	"github.com/sash2721/Relay/repositories"
 	"github.com/sash2721/Relay/services"
 )
@@ -130,6 +131,16 @@ func main() {
 		}
 	}()
 
+	proxyServer := &http.Server{
+		Addr:    serverConfig.ProxyPort,
+		Handler: proxy.NewProxyHandler(deploymentRepository),
+	}
+
+	go func() {
+		slog.Info("Proxy server listening", slog.String("port", serverConfig.ProxyPort))
+		proxyServer.ListenAndServe()
+	}()
+
 	<-ctx.Done()
 
 	slog.Info("Shutdown Signal received, shutting down the backend server gracefully!")
@@ -143,6 +154,8 @@ func main() {
 			slog.Any("Error", err),
 		)
 	}
+
+	proxyServer.Shutdown(shutdownCtx)
 
 	slog.Info("Server Exited!")
 }
