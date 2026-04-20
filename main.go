@@ -113,6 +113,20 @@ func main() {
 		r.Delete(serverConfig.DeleteDeploymentAPI, deploymentHandler.HandleDeleteDeployment)
 	})
 
+	// Serve frontend static files
+	frontendDir := "./frontend/dist"
+	fs := http.FileServer(http.Dir(frontendDir))
+	r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
+		// Try to serve the file directly
+		path := frontendDir + r.URL.Path
+		if _, err := os.Stat(path); err == nil {
+			fs.ServeHTTP(w, r)
+			return
+		}
+		// SPA fallback — serve index.html for client-side routing
+		http.ServeFile(w, r, frontendDir+"/index.html")
+	})
+
 	var server *http.Server
 
 	if serverConfig.Env == "development" {
