@@ -127,16 +127,12 @@ func main() {
 		http.ServeFile(w, r, frontendDir+"/index.html")
 	})
 
-	var server *http.Server
-
-	if serverConfig.Env == "development" {
-		server = &http.Server{
-			Addr:         serverConfig.Port,
-			Handler:      r,
-			ReadTimeout:  10 * time.Second,
-			WriteTimeout: 0,
-			IdleTimeout:  60 * time.Second,
-		}
+	server := &http.Server{
+		Addr:         serverConfig.Port,
+		Handler:      r,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 0,
+		IdleTimeout:  60 * time.Second,
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
