@@ -18,6 +18,7 @@ Build logs stream in real-time via Server-Sent Events, deployment status updates
 | Frontend | React 19, Vite, Framer Motion | SPA with project management, deployment triggers, live log viewer |
 | Database | PostgreSQL (Supabase) | Users, projects, deployments, logs |
 | Builder | Docker containers | Isolated builds per project type |
+| Hosting | AWS EC2 | Ubuntu VM with Docker |
 
 ---
 
@@ -120,9 +121,9 @@ Detection priority follows the order listed above — first match wins.
 **Infrastructure & Deployment**
 - Docker (multi-stage builds for Relay itself)
 - Docker SDK (for building user projects in isolated containers)
-- GCP Compute Engine (VM hosting)
+- AWS EC2 (VM hosting)
 - Supabase (managed PostgreSQL)
-- Wildcard DNS (`*.relay.host` → VM IP)
+- Wildcard DNS (`*.yourdomain.com` → EC2 IP)
 
 ---
 
@@ -257,33 +258,49 @@ docker compose up --build
 
 ---
 
-## Deployment to GCP
+## Deployment to AWS
 
-### 1. Create a Compute Engine VM
+### 1. Create an EC2 Instance
+
+- **AMI:** Ubuntu 22.04 LTS
+- **Instance type:** `t2.micro` (or `t3.small` for better performance)
+- **Storage:** 20GB gp3
+- **Security group inbound rules:**
+
+| Port | Protocol | Source | Purpose |
+|------|----------|--------|---------|
+| 22 | TCP | My IP | SSH access |
+| 80 | TCP | 0.0.0.0/0 | HTTP |
+| 443 | TCP | 0.0.0.0/0 | HTTPS |
+| 3000 | TCP | 0.0.0.0/0 | Relay API + Frontend |
+| 8080 | TCP | 0.0.0.0/0 | Reverse proxy (deployed sites) |
+
+### 2. SSH into the Instance
 
 ```bash
-gcloud compute instances create relay-server \
-  --zone=us-central1-a \
-  --machine-type=e2-medium \
-  --image-family=ubuntu-2204-lts \
-  --image-project=ubuntu-os-cloud \
-  --boot-disk-size=50GB \
-  --tags=http-server,https-server
+ssh -i <your-key.pem> ubuntu@<EC2_PUBLIC_IP>
 ```
 
-### 2. Open Firewall Ports
+### 3. Install Docker
 
 ```bash
-gcloud compute firewall-rules create allow-relay \
-  --allow=tcp:80,tcp:443,tcp:3000,tcp:8080 \
-  --target-tags=http-server
+sudo apt update && sudo apt install -y docker.io git
+sudo systemctl start docker && sudo systemctl enable docker
+sudo usermod -aG docker ubuntu
 ```
 
-### 3. Install Docker on the VM
+Install Docker Compose:
 
 ```bash
-sudo apt update && sudo apt install -y docker.io docker-compose-plugin git
-sudo usermod -aG docker $USER && newgrp docker
+sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+```
+
+Log out and back in for the docker group to take effect:
+
+```bash
+exit
+ssh -i <your-key.pem> ubuntu@<EC2_PUBLIC_IP>
 ```
 
 ### 4. Clone, Configure, and Run
@@ -291,21 +308,44 @@ sudo usermod -aG docker $USER && newgrp docker
 ```bash
 git clone https://github.com/sash2721/Relay.git
 cd Relay
-nano .env  # Add production values
+nano .env  # Add production values (see Environment Variables section)
 mkdir -p artifacts
-docker compose up --build -d
+docker-compose up --build -d
 ```
 
-### 5. DNS Setup
+Verify it's running:
+
+```bash
+docker-compose logs -f
+```
+
+You should see:
+```
+INFO Relay Starts!🚀
+INFO Connected to PostgreSQL database
+INFO Proxy server listening port=:8080
+Relay Backend Server listening on PORT:3000
+```
+
+The app is now accessible at `http://<EC2_PUBLIC_IP>:3000`
+
+### 5. DNS Setup (after purchasing a domain)
 
 Configure your domain with a wildcard A record:
 
 ```
-A     relay.host      → <VM_EXTERNAL_IP>
-A     *.relay.host    → <VM_EXTERNAL_IP>
+A     yourdomain.com      → <EC2_PUBLIC_IP>
+A     *.yourdomain.com    → <EC2_PUBLIC_IP>
 ```
 
-This ensures all deployed sites (`my-app-a1b2c3d4.relay.host`) resolve to your server automatically.
+Update `RELAY_DOMAIN` in `.env` to match your domain, then restart:
+
+```bash
+docker-compose down
+docker-compose up --build -d
+```
+
+This ensures all deployed sites (`my-app-a1b2c3d4.yourdomain.com`) resolve to your server automatically.
 
 ---
 
